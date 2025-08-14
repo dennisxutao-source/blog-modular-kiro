@@ -84,8 +84,8 @@ User ←→ UserRole ←→ Role ←→ RolePermission ←→ Permission
 
 ### 1. 克隆项目
 ```bash
-git clone <repository-url>
-cd blog-modular
+git clone https://github.com/dennisxutao-source/blog-modular-kiro.git
+cd blog-modular-kiro
 ```
 
 ### 2. 启动数据库服务
@@ -285,7 +285,7 @@ services:
 
 如有问题或建议，请通过以下方式联系：
 - 提交 Issue
-- 发送邮件至：[your-email@example.com]
+- 发送邮件至：[517130992@qq.com]
 
 ---
 
