@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>博客系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .article-card {
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .article-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .article-content {
+            max-height: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .modal-body textarea {
+            min-height: 200px;
+        }
+        .loading {
+            display: none;
+        }
+        .article-meta {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-journal-text"></i> 博客系统
+            </a>
+            <button class="btn btn-outline-light" onclick="showCreateModal()">
+                <i class="bi bi-plus-circle"></i> 写文章
+            </button>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <div class="container mt-4">
+        <!-- 加载提示 -->
+        <div class="text-center loading" id="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">加载中...</span>
+            </div>
+        </div>
+
+        <!-- 文章列表 -->
+        <div class="row" id="articlesList">
+            <!-- 文章卡片将通过JavaScript动态生成 -->
+        </div>
+
+        <!-- 空状态 -->
+        <div class="text-center mt-5" id="emptyState" style="display: none;">
+            <i class="bi bi-journal-x" style="font-size: 4rem; color: #dee2e6;"></i>
+            <h4 class="mt-3 text-muted">暂无文章</h4>
+            <p class="text-muted">点击右上角的"写文章"按钮创建第一篇文章吧！</p>
+        </div>
+    </div>
+
+    <!-- 创建/编辑文章模态框 -->
+    <div class="modal fade" id="articleModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">创建文章</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="articleForm">
+                        <input type="hidden" id="articleId">
+                        <div class="mb-3">
+                            <label for="title" class="form-label">标题</label>
+                            <input type="text" class="form-control" id="title" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="author" class="form-label">作者</label>
+                            <input type="text" class="form-control" id="author" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="content" class="form-label">内容</label>
+                            <textarea class="form-control" id="content" required></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveArticle()">
+                        <span class="spinner-border spinner-border-sm d-none" id="saveSpinner"></span>
+                        保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文章详情模态框 -->
+    <div class="modal fade" id="viewModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewTitle"></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="article-meta mb-3" id="viewMeta"></div>
+                    <div id="viewContent"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-primary" onclick="editCurrentArticle()">
+                        <i class="bi bi-pencil"></i> 编辑
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" onclick="deleteCurrentArticle()">
+                        <i class="bi bi-trash"></i> 删除
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_BASE = '/api/articles';
+        let currentArticle = null;
+        let articleModal, viewModal;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            articleModal = new bootstrap.Modal(document.getElementById('articleModal'));
+            viewModal = new bootstrap.Modal(document.getElementById('viewModal'));
+            loadArticles();
+        });
+
+        // 显示加载状态
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('articlesList').style.display = 'none';
+            document.getElementById('emptyState').style.display = 'none';
+        }
+
+        // 隐藏加载状态
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // 显示错误消息
+        function showError(message) {
+            alert('错误: ' + message);
+        }
+
+        // 显示成功消息
+        function showSuccess(message) {
+            // 可以用更好的通知组件替换
+            const toast = document.createElement('div');
+            toast.className = 'toast align-items-center text-white bg-success border-0 position-fixed top-0 end-0 m-3';
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // 加载文章列表
+        async function loadArticles() {
+            showLoading();
+            try {
+                const response = await fetch(API_BASE);
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayArticles(result.data);
+                } else {
+                    showError(result.error || '加载文章失败');
+                }
+            } catch (error) {
+                showError('网络错误: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 显示文章列表
+        function displayArticles(articles) {
+            const container = document.getElementById('articlesList');
+            const emptyState = document.getElementById('emptyState');
+            
+            if (!articles || articles.length === 0) {
+                container.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            container.style.display = 'flex';
+            emptyState.style.display = 'none';
+            
+            container.innerHTML = articles.map(article => `
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card article-card h-100" onclick="viewArticle(${article.id})">
+                        <div class="card-body">
+                            <h5 class="card-title">${escapeHtml(article.title)}</h5>
+                            <p class="card-text article-content">${escapeHtml(article.content)}</p>
+                            <div class="article-meta">
+                                <small>
+                                    <i class="bi bi-person"></i> ${escapeHtml(article.author)}
+                                    ${article.createdAt ? `<br><i class="bi bi-calendar"></i> ${formatDate(article.createdAt)}` : ''}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 查看文章详情
+        async function viewArticle(id) {
+            try {
+                const response = await fetch(`${API_BASE}/${id}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentArticle = result.data;
+                    document.getElementById('viewTitle').textContent = result.data.title;
+                    document.getElementById('viewMeta').innerHTML = `
+                        <i class="bi bi-person"></i> ${escapeHtml(result.data.author)}
+                        ${result.data.createdAt ? `<br><i class="bi bi-calendar"></i> ${formatDate(result.data.createdAt)}` : ''}
+                        ${result.data.updatedAt && result.data.updatedAt !== result.data.createdAt ? 
+                          `<br><i class="bi bi-pencil"></i> 更新于 ${formatDate(result.data.updatedAt)}` : ''}
+                    `;
+                    document.getElementById('viewContent').innerHTML = escapeHtml(result.data.content).replace(/\n/g, '<br>');
+                    viewModal.show();
+                } else {
+                    showError(result.error || '获取文章详情失败');
+                }
+            } catch (error) {
+                showError('网络错误: ' + error.message);
+            }
+        }
+
+        // 显示创建文章模态框
+        function showCreateModal() {
+            document.getElementById('modalTitle').textContent = '创建文章';
+            document.getElementById('articleForm').reset();
+            document.getElementById('articleId').value = '';
+            articleModal.show();
+        }
+
+        // 编辑当前文章
+        function editCurrentArticle() {
+            if (!currentArticle) return;
+            
+            viewModal.hide();
+            document.getElementById('modalTitle').textContent = '编辑文章';
+            document.getElementById('articleId').value = currentArticle.id;
+            document.getElementById('title').value = currentArticle.title;
+            document.getElementById('author').value = currentArticle.author;
+            document.getElementById('content').value = currentArticle.content;
+            articleModal.show();
+        }
+
+        // 保存文章
+        async function saveArticle() {
+            const id = document.getElementById('articleId').value;
+            const title = document.getElementById('title').value.trim();
+            const author = document.getElementById('author').value.trim();
+            const content = document.getElementById('content').value.trim();
+
+            if (!title || !author || !content) {
+                showError('请填写所有字段');
+                return;
+            }
+
+            const saveBtn = document.querySelector('#articleModal .btn-primary');
+            const spinner = document.getElementById('saveSpinner');
+            
+            saveBtn.disabled = true;
+            spinner.classList.remove('d-none');
+
+            try {
+                const url = id ? `${API_BASE}/${id}` : API_BASE;
+                const method = id ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title, author, content })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess(id ? '文章更新成功' : '文章创建成功');
+                    articleModal.hide();
+                    loadArticles();
+                } else {
+                    showError(result.error || '保存失败');
+                }
+            } catch (error) {
+                showError('网络错误: ' + error.message);
+            } finally {
+                saveBtn.disabled = false;
+                spinner.classList.add('d-none');
+            }
+        }
+
+        // 删除当前文章
+        async function deleteCurrentArticle() {
+            if (!currentArticle) return;
+            
+            if (!confirm(`确定要删除文章"${currentArticle.title}"吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/${currentArticle.id}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess('文章删除成功');
+                    viewModal.hide();
+                    loadArticles();
+                } else {
+                    showError(result.error || '删除失败');
+                }
+            } catch (error) {
+                showError('网络错误: ' + error.message);
+            }
+        }
+
+        // 工具函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('zh-CN');
+        }
+    </script>
+</body>
+</html>
