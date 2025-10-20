@@ -43,3 +43,11 @@ logging:
     org.springframework: INFO
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+# PDF配置
+pdf:
+  font-path: src/main/resources/fonts/NotoSerifCJKsc-Regular.otf
+  template-dir: src/main/resources/templates/pdf/
+  output-dir: output/pdf/
+  default-font-size: 12
+  embed-font: true
